@@ -67,8 +67,23 @@ jobs:
           cd "$GITHUB_WORKSPACE/pkgs"
           COMMIT="$(git -C "$GITHUB_WORKSPACE/source" rev-parse HEAD)"
           echo "Pinning ${VERSION} @ ${COMMIT}"
-          OMARCHY_UPSTREAM_URL="https://github.com/robert-flo/omarchy.git" \
-            ./bin/omarchy-pkgs release "$VERSION" --commit "$COMMIT" --no-push --yes
+          # El engine usa vercmp (pacman) y makepkg -g: corre dentro de un
+          # contenedor Arch (matriz con base-devel) montando el checkout.
+          docker run --rm \
+            -e OMARCHY_UPSTREAM_URL="https://github.com/robert-flo/omarchy.git" \
+            -e VERSION="$VERSION" \
+            -e COMMIT="$COMMIT" \
+            -w /pkgs \
+            -v "$GITHUB_WORKSPACE/pkgs:/pkgs" \
+            archlinux:base-devel bash -lc '
+              set -euo pipefail
+              pacman -Syu --noconfirm >/dev/null
+              git config --global user.name "omarchy-personal[bot]"
+              git config --global user.email "omarchy-personal@users.noreply.github.com"
+              OMARCHY_UPSTREAM_URL="$OMARCHY_UPSTREAM_URL" ./bin/omarchy-pkgs release "$VERSION" --commit "$COMMIT" --no-push --yes
+            '
+          # El contenedor corre como root: devolver la propiedad al runner.
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/pkgs"
         env:
           VERSION: ${{ inputs.version }}
 
