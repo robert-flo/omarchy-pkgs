@@ -202,8 +202,11 @@ jobs:
 
       - name: Validar publicacion en GitHub Pages
         run: |
+          # El archivo real ya esta publicado en el checkout local: derivar el
+          # nombre exacto (VERSION lleva 'v' p. ej. v4.0.2; el archivo no).
+          want="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/omarchy-*.pkg.tar.zst 2>/dev/null | head -1)")"
+          echo "Archivo a validar: $want"
           base="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64"
-          want="omarchy-${VERSION}-${PKGREL}-any.pkg.tar.zst"
           ok=0
           for i in $(seq 1 60); do
             if curl -fsSI "$base/$want" >/dev/null 2>&1 \
