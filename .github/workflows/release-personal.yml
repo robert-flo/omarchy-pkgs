@@ -156,9 +156,9 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/pkgs"
           export OMARCHY_REPO_ROOT="$GITHUB_WORKSPACE/repo"
-          ./bin/repo --local promote-build --mirror stable --arch x86_64
-          ./bin/repo --local update-repo --mirror stable --arch x86_64
-          ./bin/repo --local clean-repo --mirror stable --arch x86_64
+          ./bin/repo --local promote --mirror stable --arch x86_64
+          ./bin/repo --local update --mirror stable --arch x86_64
+          ./bin/repo --local clean --mirror stable --arch x86_64
 
       - name: Publicar a gh-pages (db como copias + firmas)
         run: |
