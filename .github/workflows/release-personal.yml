@@ -189,8 +189,12 @@ jobs:
           gpg --batch --yes --detach-sign --armor --output stable/x86_64/omarchy.files.sig stable/x86_64/omarchy.files
           ls -1 stable/x86_64/
           git add -A
-          git commit -m "publish: ${VERSION}-${PKGREL}"
-          git push origin gh-pages
+          if git diff --cached --quiet; then
+            echo "Sin cambios para publicar (mismo contenido ya en gh-pages)."
+          else
+            git commit -m "publish: ${VERSION}-${PKGREL}"
+            git push origin gh-pages
+          fi
         env:
           VERSION: ${{ inputs.version }}
           PKGREL: ${{ inputs.pkgrel }}
@@ -201,7 +205,7 @@ jobs:
           base="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64"
           want="omarchy-${VERSION}-${PKGREL}-any.pkg.tar.zst"
           ok=0
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -fsSI "$base/$want" >/dev/null 2>&1 \
               && curl -fsSI "$base/omarchy.db" >/dev/null 2>&1 \
               && curl -fsSI "$base/omarchy.db.sig" >/dev/null 2>&1; then
