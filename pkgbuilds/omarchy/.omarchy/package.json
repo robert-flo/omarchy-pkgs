@@ -1,5 +1,6 @@
 {
   "source": "local",
   "channels": ["edge", "rc", "stable"],
-  "pinned": true
+  "pinned": true,
+  "release_ring": "fast"
 }
