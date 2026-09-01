@@ -1,10 +1,10 @@
 name: Release personal
 
 # FORK (robert-flo): publicacion del repositorio personal de paquetes Omarchy
-# para robert-flo (W7). Flujo: pin (lockstep) -> build/sign/promote/update en
-# edge (canal nativo de los pinned) -> copia paquete+.sig a stable (advance
-# sin sync) -> update/clean de stable -> publicar a gh-pages del repo
-# omarchy-personal-repo.
+# para robert-flo (W7). Flujo: pin (lockstep) -> build -> sign -> promote ->
+# update -> clean -> publicar a gh-pages del repo omarchy-personal-repo.
+# Build directo a stable contra el ecosistema estable oficial: requiere
+# un-pin temporal (los pinned no buildan nativo a stable por diseño).
 #
 # Reglas (§5.3 del plan): el par personal usa el pkgver del tag base de la
 # rama personal y un pkgrel de base 99 (por encima de cualquier estable
@@ -139,43 +139,38 @@ jobs:
           VERSION: ${{ inputs.version }}
           PKGREL: ${{ inputs.pkgrel }}
 
-      - name: Build (edge/x86_64, paquetes omarchy omarchy-settings)
+      # FORK: los pinned nunca se buildan nativo para stable (package-metadata.sh
+      # `package_builds_for_mirror`, build.sh:449); el par personal SI se builda
+      # directo a stable contra el ecosistema estable oficial (deps resueltas
+      # via [omarchy] remoto que la imagen stable mantiene; ver build/Dockerfile).
+      # Por eso se hace un un-pin temporal LOCAL (no se commitea) justo antes.
+      - name: Build (stable/x86_64, paquetes omarchy omarchy-settings)
         run: |
           cd "$GITHUB_WORKSPACE/pkgs"
           export OMARCHY_REPO_ROOT="$GITHUB_WORKSPACE/repo"
-          rm -rf "$OMARCHY_REPO_ROOT/edge" "$OMARCHY_REPO_ROOT/stable"
-          ./bin/repo --local build --mirror edge --arch x86_64 --package omarchy omarchy-settings
+          rm -rf "$OMARCHY_REPO_ROOT/stable"
+          for p in omarchy omarchy-settings; do
+            jq '.pinned = false' "pkgbuilds/$p/.omarchy/package.json" > "pkgbuilds/$p/.omarchy/package.json.tmp" &&
+              mv "pkgbuilds/$p/.omarchy/package.json.tmp" "pkgbuilds/$p/.omarchy/package.json"
+          done
+          jq -r '.pinned' pkgbuilds/omarchy/.omarchy/package.json
+          ./bin/repo --local build --mirror stable --arch x86_64 --package omarchy omarchy-settings
 
       - name: Sign
         run: |
           cd "$GITHUB_WORKSPACE/pkgs"
-          ./bin/repo --local sign --mirror edge --arch x86_64
+          ./bin/repo --local sign --mirror stable --arch x86_64
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
-      # Los pinned nunca se buildan nativo para stable (package-metadata.sh):
-      # fluyen edge → rc → stable. Personal publica solo el par en stable, asi
-      # que advance se reduce a copiar paquete+.sig de edge a stable (sin sync).
-      - name: Promover a stable y regenerar db
+      - name: Promover, regenerar db y limpiar
         run: |
           cd "$GITHUB_WORKSPACE/pkgs"
           export OMARCHY_REPO_ROOT="$GITHUB_WORKSPACE/repo"
-          ./bin/repo --local promote --mirror edge --arch x86_64
-          ./bin/repo --local update --mirror edge --arch x86_64
-          src="$OMARCHY_REPO_ROOT/edge/x86_64"
-          dst="$OMARCHY_REPO_ROOT/stable/x86_64"
-          mkdir -p "$dst"
-          for p in "$src"/*.pkg.tar.zst; do
-            [[ -e "$p" ]] || continue
-            [[ -f "$p.sig" ]] || { echo "FORK FAIL: falta .sig de $(basename "$p")"; exit 1; }
-            cp -p "$p" "$dst/"
-            cp -p "$p.sig" "$dst/"
-          done
-          ls -1 "$dst"
+          ./bin/repo --local promote --mirror stable --arch x86_64
           ./bin/repo --local update --mirror stable --arch x86_64
           ./bin/repo --local clean --mirror stable --arch x86_64
-          rm -rf "$OMARCHY_REPO_ROOT/edge"
 
       - name: Publicar a gh-pages (db como copias + firmas)
         run: |
