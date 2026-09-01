@@ -116,7 +116,16 @@ RUN pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver 
     pacman -Sy --noconfirm && \
     pacman -S --noconfirm omarchy-keyring && \
     pacman-key --populate omarchy && \
-    sed -i '/^\[omarchy\]/,/^$/d' /etc/pacman.conf
+    if [ "${MIRROR}" = "stable" ]; then \
+      # FORK (robert-flo): keep the official [omarchy] repo when building for
+      # stable. Upstream removes it because build.sh adds it dynamically as a
+      # file:// repo, but our personal repo does NOT rebuild the ecosystem
+      # (quickshell, hyprland, limine...), so makepkg -s must resolve those
+      # depends against pkgs.omarchy.org/stable. Only deviation to bin/build/.
+      echo "  -> (fork) keeping [omarchy] ${MIRROR} repo for dependency resolution"; \
+    else \
+      sed -i '/^\[omarchy\]/,/^$/d' /etc/pacman.conf; \
+    fi
 
 RUN pacman -Syu --noconfirm && \
     pacman -S --noconfirm \

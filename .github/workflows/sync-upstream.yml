@@ -1,9 +1,8 @@
 name: Sync Upstream Releases
 
 on:
-  schedule:
-    # Every 6 hours, off the hour to dodge the scheduling backlog at :00
-    - cron: '20 */6 * * *'
+  # FORK (robert-flo): no schedule — inert. The personal repo only publishes
+  # the omarchy + omarchy-settings pair; upstream feed sync is not used.
   workflow_dispatch:
     inputs:
       packages:
@@ -80,7 +79,6 @@ jobs:
           branch: auto/sync-upstream
           delete-branch: true
           labels: automated
-          reviewers: ryanrhughes
 
       - name: Notify Basecamp on failure
         if: failure() && env.BASECAMP_CHATBOT_URL != ''

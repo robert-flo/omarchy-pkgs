@@ -79,7 +79,7 @@ if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=()
   sha256sums=()
 else
-  source=("omarchy::git+https://github.com/basecamp/omarchy.git#commit=${_commit}")
+  source=("omarchy::git+https://github.com/robert-flo/omarchy.git#commit=${_commit}")
   sha256sums=('ed1ca61045f73e313c3e73874d324945e2b5357e6510664eab25783b26138197')
 fi
 
