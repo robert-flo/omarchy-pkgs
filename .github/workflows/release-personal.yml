@@ -78,6 +78,7 @@ jobs:
             archlinux:base-devel bash -lc '
               set -euo pipefail
               pacman -Syu --noconfirm >/dev/null
+              pacman -S --noconfirm --needed git >/dev/null
               git config --global user.name "omarchy-personal[bot]"
               git config --global user.email "omarchy-personal@users.noreply.github.com"
               OMARCHY_UPSTREAM_URL="$OMARCHY_UPSTREAM_URL" ./bin/omarchy-pkgs release "$VERSION" --commit "$COMMIT" --no-push --yes
