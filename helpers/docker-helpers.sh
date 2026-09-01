@@ -66,4 +66,8 @@ make_dir_writable() {
   else
     sudo chown -R $(id -u):$(id -g) "$dir" 2>/dev/null || chmod -R 777 "$dir"
   fi
+  # FORK (robert-flo): el contenedor corre como 'builder' (uid 1000, makepkg
+  # y repo-add) mientras los dirs los crea/chown el runner no-root; a+rwX
+  # le conserva la escritura igual que el paso de pin (chmod a+rwX /pkgs).
+  chmod -R a+rwX "$dir" 2>/dev/null || true
 }
