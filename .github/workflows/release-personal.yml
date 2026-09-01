@@ -180,7 +180,7 @@ jobs:
             if [[ -L "$f" ]]; then
               rl="$(readlink "$f")"
               rm -f "$f"
-              cp -L "$rl" "$f"
+              cp -L "$(dirname "$f")/$rl" "$f"
             fi
           done
           # Firma de la base de datos (armor, como la publica omarchy)
