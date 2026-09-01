@@ -79,9 +79,17 @@ jobs:
               set -euo pipefail
               pacman -Syu --noconfirm >/dev/null
               pacman -S --noconfirm --needed git >/dev/null
-              git config --global user.name "omarchy-personal[bot]"
-              git config --global user.email "omarchy-personal@users.noreply.github.com"
-              OMARCHY_UPSTREAM_URL="$OMARCHY_UPSTREAM_URL" ./bin/omarchy-pkgs release "$VERSION" --commit "$COMMIT" --no-push --yes
+              git config --global --add safe.directory /pkgs
+              # makepkg rechaza correr como root: el engine va como no-root.
+              useradd -m builder
+              chmod -R a+rwX /pkgs
+              su builder -c "
+                set -euo pipefail
+                git config --global --add safe.directory /pkgs
+                git config --global user.name \"omarchy-personal[bot]\"
+                git config --global user.email \"omarchy-personal@users.noreply.github.com\"
+                cd /pkgs && OMARCHY_UPSTREAM_URL=\"\$OMARCHY_UPSTREAM_URL\" ./bin/omarchy-pkgs release \"\$VERSION\" --commit \"\$COMMIT\" --no-push --yes
+              "
             '
           # El contenedor corre como root: devolver la propiedad al runner.
           sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/pkgs"
