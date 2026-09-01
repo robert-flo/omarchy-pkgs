@@ -102,7 +102,7 @@ jobs:
           for p in omarchy omarchy-settings; do
             sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "pkgbuilds/$p/PKGBUILD"
           done
-          rg -n '^pkgver=|^pkgrel=|^_commit=' pkgbuilds/omarchy/PKGBUILD
+          grep -nE '^pkgver=|^pkgrel=|^_commit=' pkgbuilds/omarchy/PKGBUILD
         env:
           PKGREL: ${{ inputs.pkgrel }}
 
