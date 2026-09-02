@@ -1,0 +1,119 @@
+name: Sync check (cadencia personal vs upstream)
+
+# Vigila la cadencia del fork personal frente a OMACOM/omarchy (B2, revision L8).
+# Riesgo que cubre: si el ecosistema oficial publica un tag nuevo y el pin de la
+# rama personal no lo recoge, cada maquina en sombreado podria resolver el
+# paquete OFICIAL por encima del personal en vercmp (perdida silenciosa de la
+# personalizacion). Este check compara el tag mas reciente de upstream con el
+# pkgver pineado en personal y abre/cierra un issue de aviso.
+#
+# IMPORTANTE (requisito GitHub): los workflows con `schedule` solo corren cuando
+# el archivo existe en la rama por defecto (master). La copia de registro en
+# master es IDENTICA a la de personal; el job siempre hace checkout explicito de
+# la rama `personal` (donde vive el pin real), asi da igual desde que copia parta.
+
+on:
+  schedule:
+    # diario 06:30 UTC
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pkgs (rama personal, donde vive el pin)
+        uses: actions/checkout@v4
+        with:
+          repository: robert-flo/omarchy-pkgs
+          ref: personal
+          path: pkgs
+          persist-credentials: false
+
+      - name: Lee pin del par y ultimo tag/HEAD de upstream
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/pkgs"
+          PIN="$(awk -F= '/^pkgver=/{v=$2} END{print v}' pkgbuilds/omarchy/PKGBUILD)"
+          PIN_COMMIT="$(awk -F= '/^_commit=/{c=$2} END{print c}' pkgbuilds/omarchy/PKGBUILD)"
+          UP_TAG="$(git ls-remote --tags https://github.com/omacom/omarchy.git \
+            | awk '{print $2}' \
+            | grep -E '^refs/tags/v[0-9]' \
+            | sed -E 's#^refs/tags/##; s/\^\{\}$//' \
+            | sort -Vu \
+            | tail -n1)"
+          UP_HEAD="$(git ls-remote https://github.com/omacom/omarchy.git refs/heads/quattro | awk '{print $1}')"
+          echo "pin=$PIN pin_commit=$PIN_COMMIT up_tag=$UP_TAG up_head=$UP_HEAD"
+          echo "PIN=$PIN" >> "$GITHUB_ENV"
+          echo "PIN_COMMIT=$PIN_COMMIT" >> "$GITHUB_ENV"
+          echo "UP_TAG=$UP_TAG" >> "$GITHUB_ENV"
+          echo "UP_HEAD=$UP_HEAD" >> "$GITHUB_ENV"
+
+      - name: Compara cadencia (version >= upstream?)
+        run: |
+          set -euo pipefail
+          pin="$PIN"
+          latest="${UP_TAG#v}"
+          if [[ "$(printf '%s\n%s\n' "$pin" "$latest" | sort -V | tail -n1)" == "$pin" ]]; then
+            echo "OK version: pin $pin >= upstream $latest"
+            echo "BEHIND=false" >> "$GITHUB_ENV"
+          else
+            echo "BEHIND version: pin $pin < upstream $latest"
+            echo "BEHIND=true" >> "$GITHUB_ENV"
+          fi
+          # Informacio extra: si el pin esta al dia respecto al HEAD de quattro.
+          if [[ -n "$PIN_COMMIT" && "$PIN_COMMIT" == "$UP_HEAD" ]]; then
+            echo "Nota: pin commit == HEAD quattro"
+          else
+            echo "Nota: pin commit ($PIN_COMMIT) != HEAD quattro ($UP_HEAD) [dependencia a evaluar]"
+          fi
+
+      - name: Gestiona issue de aviso de cadencia
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          TITLE="[Cadencia] Omarchy ${UP_TAG} publicado; pin personal en ${PIN}"
+          OPEN="$(gh issue list -R "$REPO" --state open --limit 50 --json number,title \
+            --jq '.[] | select(.title | startswith("[Cadencia]")) | [.number,.title] | @tsv' 2>/dev/null || true)"
+          if [[ "$BEHIND" == "true" ]]; then
+            if [[ -z "$OPEN" ]]; then
+              BODY_LINES=(
+                "Aviso automatizado (workflow \`sync-check.yml\`, revision L8)."
+                ""
+                "OMACOM/omarchy publico el tag \`${UP_TAG}\`, pero la rama personal"
+                "de omarchy-pkgs mantiene el pin en \`${PIN}\` (§5.3). Mientras no se"
+                "republique el par personal, las maquinas en sombreado podrian"
+                "resolver el paquete OFICIAL por encima de vercmp y perder"
+                "silenciosamente la personalizacion."
+                ""
+                "Como arreglarlo (RUNBOOK, modo \"Cadencia pendiente\"):"
+                "  1. Revisa / rebasa tu rama personal sobre quattro y publica el pin nuevo:"
+                "     gh workflow run release-personal.yml -R robert-flo/omarchy-pkgs \\"
+                "        --ref personal -f version=v${UP_TAG#v}"
+                "  2. El workflow deriva el pkgrel (§5.3) y publica en gh-pages."
+                "  3. Actualiza las maquinas (READANCE update / docs/05-mantener)."
+                ""
+                "Este issue se cierra solo cuando el pin vuelve a estar en cadencia."
+              )
+              printf -v BODY '%s\n' "${BODY_LINES[@]}"
+              gh issue create -R "$REPO" --title "$TITLE" --body "$BODY"
+              echo "Issue creado para $UP_TAG (pin $PIN)."
+            else
+              echo "Ya existe issue abierto [Cadencia]; sin duplicar."
+            fi
+          else
+            if [[ -n "$OPEN" ]]; then
+              while IFS=$'\t' read -r num title; do
+                gh issue close -R "$REPO" "$num" -c "Resuelto: pin $PIN = upstream $UP_TAG (en cadencia). Cierre automatico del workflow sync-check."
+                echo "Cerrado issue #$num (en cadencia)."
+              done <<< "$OPEN"
+            else
+              echo "En cadencia y sin issues abiertos: sin accion."
+            fi
+          fi

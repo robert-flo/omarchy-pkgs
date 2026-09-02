@@ -1,15 +1,36 @@
 name: Release personal
 
 # FORK (robert-flo): publicacion del repositorio personal de paquetes Omarchy
-# para robert-flo (W7). Flujo: pin (lockstep) -> build -> sign -> promote ->
-# update -> clean -> publicar a gh-pages del repo omarchy-personal-repo.
+# para robert-flo (W7). Flujo: recolectar paquetes 'personal':true -> pin (solo el
+# par lockstep) -> build -> sign -> promote -> update -> clean -> publicar a
+# gh-pages del repo omarchy-personal-repo.
 # Build directo a stable contra el ecosistema estable oficial: requiere
-# un-pin temporal (los pinned no buildan nativo a stable por diseño).
+# un-pin temporal de los pinned (no buildan nativo a stable por diseño).
+#
+# Conjunto publicado: todos los PKGBUILD con `"personal": true` en su
+# .omarchy/package.json. El par omarchy/omarchy-settings es el unico lockstep
+# (pinned): su pkgver deriva del tag y su pkgrel sigue §5.3. Los paquetes
+# personales genericos (p. ej. hola-mundo) se buildan tal cual su PKGBUILD.
 #
 # Reglas (§5.3 del plan): el par personal usa el pkgver del tag base de la
 # rama personal y un pkgrel de base 99 (por encima de cualquier estable
-# oficial). El guard de version aborta si quedara por detras del estable
-# oficial publicado en pkgs.omarchy.org.
+# oficial), creciendo por republicacion del mismo pkgver. El guard de version
+# aborta si quedara por detras del estable oficial publicado en pkgs.omarchy.org.
+#
+# ENDURECIMIENTO (revision L8, 2026-09-01):
+#   - Guard fail-fast: este workflow SOLO correr desde la rama personal
+#     (`--ref personal`). La copia registrada en master es idéntica pero
+#     quedó por REQUISITO de GitHub (workflow_dispatch por API exige el
+#     workflow en la rama default); si se dispara desde master, aborta.
+#   - pkgrel autoderivado (§5.3): ya NO se pide por input. Se lee el estado
+#     previo del PKGBUILD del par commitado en personal y, tras el pin,
+#     se aplica: pkgver nuevo -> 99; mismo pkgver -> ultima republicada +1.
+#     El input `pkgrel` queda como override opcional (emergencias).
+#   - `dry_run`: buildea/signa/promueve/valida SIN tocar ni la rama personal
+#     (no commitea el pin) ni gh-pages (no publica).
+#   - `concurrency` (group release-personal, cancel-in-progress: false):
+#     dos dispatches quedan en cola, no corren intercalados sobre el mismo
+#     destino (gh-pages / personal).
 #
 # Secrets necesarios (repo omarchy-pkgs, donde vive este workflow):
 #   GPG_PRIVATE_KEY   clave GPG dedicada (exportacion PGP privada)
@@ -24,9 +45,14 @@ on:
         required: true
         default: "v4.0.2"
       pkgrel:
-        description: "pkgrel base segun §5.3 (crece en cada republicacion del mismo pkgver)"
-        required: true
-        default: "99"
+        description: "OPCIONAL: override manual del pkgrel del par (§5.3). Si se omite se deriva (pkgver nuevo -> 99; mismo pkgver -> último +1)."
+        required: false
+        default: ""
+      dry_run:
+        description: "true = build/sign/promote/validate sin publicar (ni pin en personal ni gh-pages)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -35,7 +61,22 @@ jobs:
   release:
     runs-on: ubuntu-latest
 
+    # Dos dispatches no deben correr a la vez sobre el mismo destino.
+    concurrency:
+      group: release-personal
+      cancel-in-progress: false
+
     steps:
+      - name: "Guard de rama (CRITICO: solo personal)"
+        if: ${{ github.ref != 'refs/heads/personal' }}
+        run: |
+          echo "FORK ABORT: release-personal.yml debe dispararse SOLO desde la rama personal"
+          echo "  (gh workflow run ... --ref personal)."
+          echo "  github.ref actual: ${{ github.ref }}."
+          echo "  La copia en la rama default (master) es de registro, requisito de"
+          echo "  workflow_dispatch por API; NO se debe ejecutar desde ahi."
+          exit 1
+
       - name: Checkout source (fork omarchy, rama personal)
         uses: actions/checkout@v4
         with:
@@ -63,6 +104,51 @@ jobs:
         run: |
           git config --global user.name "omarchy-personal[bot]"
           git config --global user.email "omarchy-personal@users.noreply.github.com"
+
+      # FORK: el pkgrel del par (§5.3) se deriva del estado commitado en personal
+      # (el paso "Commit del pin" deja el pkgrel aplicado). Se captura ANTES de
+      # que el pin engine reescriba el PKGBUILD.
+      - name: Lee estado previo del par (para derivar pkgrel §5.3)
+        run: |
+          cd "$GITHUB_WORKSPACE/pkgs"
+          PRE_PKGVER="$(awk -F= '/^pkgver=/{v=$2} END{print v}' pkgbuilds/omarchy/PKGBUILD 2>/dev/null || true)"
+          PRE_PKGREL="$(awk -F= '/^pkgrel=/{v=$2} END{print v}' pkgbuilds/omarchy/PKGBUILD 2>/dev/null || true)"
+          echo "PRE_PKGVER=${PRE_PKGVER:-}"
+          echo "PRE_PKGREL=${PRE_PKGREL:-}"
+          echo "PRE_PKGVER=${PRE_PKGVER:-}" >> "$GITHUB_ENV"
+          echo "PRE_PKGREL=${PRE_PKGREL:-}" >> "$GITHUB_ENV"
+
+      # FORK: generalizacion de la publicacion personal. En vez de
+      # hardcodear el par omarchy/omarchy-settings, la Action recolecta todos los
+      # PKGBUILD marcados `"personal": true` en su .omarchy/package.json y publica
+      # exactamente ese conjunto. El par (pinned/lockstep) se trata aparte con su
+      # pkgrel §5.3; los paquetes personales genericos (p. ej. hola-mundo) se
+      # construyen tal cual su PKGBUILD, sin forzar pkgrel.
+      - name: Recolecta paquetes personales (personal:true)
+        run: |
+          cd "$GITHUB_WORKSPACE/pkgs"
+          personal_pkgs=""
+          pinned_personal_pkgs=""
+          for d in pkgbuilds/*/; do
+            [[ -f "$d/.omarchy/package.json" ]] || continue
+            [[ -f "$d/PKGBUILD" ]] || continue
+            pers=$(jq -r '.personal // false' "$d/.omarchy/package.json")
+            [[ "$pers" == "true" ]] || continue
+            name=$(basename "$d")
+            personal_pkgs="$personal_pkgs $name"
+            pin=$(jq -r '.pinned // false' "$d/.omarchy/package.json")
+            [[ "$pin" == "true" ]] && pinned_personal_pkgs="$pinned_personal_pkgs $name"
+          done
+          personal_pkgs="${personal_pkgs# }"
+          pinned_personal_pkgs="${pinned_personal_pkgs# }"
+          echo "personal_pkgs=[$personal_pkgs]"
+          echo "pinned_personal_pkgs=[$pinned_personal_pkgs]"
+          if [[ -z "$personal_pkgs" ]]; then
+            echo "FORK ABORT: no hay paquetes marcados 'personal': true."
+            exit 1
+          fi
+          echo "PERSONAL_PKGS=$personal_pkgs" >> "$GITHUB_ENV"
+          echo "PINNED_PERSONAL_PKGS=$pinned_personal_pkgs" >> "$GITHUB_ENV"
 
       - name: Pin del par (lockstep) sobre el commit de la rama personal
         run: |
@@ -98,15 +184,30 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
 
-      - name: Aplica pkgrel base de republicacion (§5.3)
+      - name: Aplica pkgrel (§5.3, solo lockstep pinned; autoderivado o override)
         run: |
+          set -euo pipefail
           cd "$GITHUB_WORKSPACE/pkgs"
-          for p in omarchy omarchy-settings; do
+          PINVER="$(awk -F= '/^pkgver=/{v=$2} END{print v}' pkgbuilds/omarchy/PKGBUILD)"
+          if [[ -n "$PKGREL_OVERRIDE" ]]; then
+            PKGREL="$PKGREL_OVERRIDE"
+            echo "pkgrel: override manual -> $PKGREL"
+          elif [[ "$PINVER" == "${PRE_PKGVER:-}" && -n "${PRE_PKGVER:-}" ]]; then
+            PKGREL="$(( ${PRE_PKGREL:-99} + 1 ))"
+            echo "pkgrel derivado §5.3: mismo pkgver ($PINVER) -> última republicada ${PRE_PKGREL:-99} + 1 = $PKGREL"
+          else
+            PKGREL="99"
+            echo "pkgrel derivado §5.3: pkgver nuevo ($PINVER; previo ${PRE_PKGVER:-ninguno}) -> base $PKGREL"
+          fi
+          for p in $PINNED_PERSONAL_PKGS; do
             sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "pkgbuilds/$p/PKGBUILD"
           done
+          echo "PKGREL=$PKGREL" >> "$GITHUB_ENV"
           grep -nE '^pkgver=|^pkgrel=|^_commit=' pkgbuilds/omarchy/PKGBUILD
         env:
-          PKGREL: ${{ inputs.pkgrel }}
+          PKGREL_OVERRIDE: ${{ inputs.pkgrel }}
+          PRE_PKGVER: ${{ env.PRE_PKGVER }}
+          PRE_PKGREL: ${{ env.PRE_PKGREL }}
 
       - name: Guard de version contra el estable oficial (§5.3)
         run: |
@@ -126,9 +227,12 @@ jobs:
           echo "OK: el par personal esta por encima del estable oficial."
 
       - name: Commit del pin y push a la rama personal
+        if: ${{ inputs.dry_run == 'false' }}
         run: |
           cd "$GITHUB_WORKSPACE/pkgs"
-          git add pkgbuilds/omarchy/PKGBUILD pkgbuilds/omarchy-settings/PKGBUILD
+          for p in $PINNED_PERSONAL_PKGS; do
+            git add "pkgbuilds/$p/PKGBUILD"
+          done
           if git diff --cached --quiet; then
             echo "Sin cambios de pin (ya estaba pineado)."
           else
@@ -137,24 +241,25 @@ jobs:
           git push origin personal
         env:
           VERSION: ${{ inputs.version }}
-          PKGREL: ${{ inputs.pkgrel }}
 
       # FORK: los pinned nunca se buildan nativo para stable (package-metadata.sh
       # `package_builds_for_mirror`, build.sh:449); el par personal SI se builda
       # directo a stable contra el ecosistema estable oficial (deps resueltas
       # via [omarchy] remoto que la imagen stable mantiene; ver build/Dockerfile).
       # Por eso se hace un un-pin temporal LOCAL (no se commitea) justo antes.
-      - name: Build (stable/x86_64, paquetes omarchy omarchy-settings)
+      # Los paquetes personales genericos (no pinned) se buildan tal cual: el
+      # un-pin solo aplica al subconjunto pinned (el par lockstep).
+      - name: Build (stable/x86_64, paquetes personales)
         run: |
           cd "$GITHUB_WORKSPACE/pkgs"
           export OMARCHY_REPO_ROOT="$GITHUB_WORKSPACE/repo"
           rm -rf "$OMARCHY_REPO_ROOT/stable"
-          for p in omarchy omarchy-settings; do
+          for p in $PINNED_PERSONAL_PKGS; do
             jq '.pinned = false' "pkgbuilds/$p/.omarchy/package.json" > "pkgbuilds/$p/.omarchy/package.json.tmp" &&
               mv "pkgbuilds/$p/.omarchy/package.json.tmp" "pkgbuilds/$p/.omarchy/package.json"
           done
           jq -r '.pinned' pkgbuilds/omarchy/.omarchy/package.json
-          ./bin/repo --local build --mirror stable --arch x86_64 --package omarchy omarchy-settings
+          ./bin/repo --local build --mirror stable --arch x86_64 --package $PERSONAL_PKGS
 
       - name: Sign
         run: |
@@ -173,6 +278,7 @@ jobs:
           ./bin/repo --local clean --mirror stable --arch x86_64
 
       - name: Publicar a gh-pages (db como copias + firmas)
+        if: ${{ inputs.dry_run == 'false' }}
         run: |
           cd "$GITHUB_WORKSPACE/repo"
           # GitHub Pages no sirve symlinks: resuelve omarchy.db/omarchy.files
@@ -206,19 +312,31 @@ jobs:
           fi
         env:
           VERSION: ${{ inputs.version }}
-          PKGREL: ${{ inputs.pkgrel }}
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
 
       - name: Validar publicacion en GitHub Pages
+        if: ${{ inputs.dry_run == 'false' }}
         run: |
-          # El archivo real ya esta publicado en el checkout local: derivar el
-          # nombre exacto (VERSION lleva 'v' p. ej. v4.0.2; el archivo no).
-          want="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/omarchy-*.pkg.tar.zst 2>/dev/null | head -1)")"
-          echo "Archivo a validar: $want"
           base="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64"
+          # Derivar el nombre real del .pkg.tar.zst del par (VERSION lleva 'v' p. ej.
+          # v4.0.2; el archivo no) y del paquete personal generico p. ej. hola-mundo.
+          want="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/omarchy-*.pkg.tar.zst 2>/dev/null | head -1)")"
+          echo "Par a validar: $want"
+          wants="$want"
+          for extra in $PERSONAL_PKGS; do
+            case " $wants " in *" $extra-"*) ;; *)
+              f="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/$extra-*.pkg.tar.zst 2>/dev/null | head -1)")"
+              [[ -n "$f" ]] && wants="$wants $f"
+            esac
+          done
+          echo "Artefactos a validar: $wants"
           ok=0
           for i in $(seq 1 60); do
-            if curl -fsSI "$base/$want" >/dev/null 2>&1 \
+            all=1
+            for w in $wants; do
+              curl -fsSI "$base/$w" >/dev/null 2>&1 || { all=0; break; }
+            done
+            if [[ "$all" -eq 1 ]] \
               && curl -fsSI "$base/omarchy.db" >/dev/null 2>&1 \
               && curl -fsSI "$base/omarchy.db.sig" >/dev/null 2>&1 \
               && curl -fsSI "$base/omarchy-personal.db" >/dev/null 2>&1 \
@@ -235,6 +353,22 @@ jobs:
           fi
           echo "OK: artefactos servidos en $base"
           curl -fsSI "$base/$want" | grep -iE 'HTTP|content-type'
+
+      # dry_run: el arbol quedo materializado en ./repo SIN publicar nada.
+      # Validar localmente los artefactos y firmas en vez de consultar Pages.
+      - name: Validar arbol local (dry-run, nada publicado)
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/repo/stable/x86_64"
+          ls -1
+          for p in $PERSONAL_PKGS; do
+            f="$(basename "$(ls "$p"-*.pkg.tar.zst 2>/dev/null | head -1)")"
+            [[ -n "$f" ]] || { echo "FORK FAIL (dry-run): sin artefacto para '$p'"; exit 1; }
+            [[ -f "$f.sig" ]] || { echo "FORK FAIL (dry-run): sin firma '$f.sig'"; exit 1; }
+            gpg --batch --import <<<"$GPG_PRIVATE_KEY" 2>/dev/null || true
+            echo "OK: $f (+ $f.sig)"
+          done
+          echo "OK (dry-run): arbol validado. No se commiteo pin ni se publico a gh-pages."
         env:
-          VERSION: ${{ inputs.version }}
-          PKGREL: ${{ inputs.pkgrel }}
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
