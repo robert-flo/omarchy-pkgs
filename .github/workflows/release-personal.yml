@@ -227,7 +227,7 @@ jobs:
           echo "OK: el par personal esta por encima del estable oficial."
 
       - name: Commit del pin y push a la rama personal
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ !inputs.dry_run }}
         run: |
           cd "$GITHUB_WORKSPACE/pkgs"
           for p in $PINNED_PERSONAL_PKGS; do
@@ -278,7 +278,7 @@ jobs:
           ./bin/repo --local clean --mirror stable --arch x86_64
 
       - name: Publicar a gh-pages (db como copias + firmas)
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ !inputs.dry_run }}
         run: |
           cd "$GITHUB_WORKSPACE/repo"
           # GitHub Pages no sirve symlinks: resuelve omarchy.db/omarchy.files
@@ -315,7 +315,7 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
 
       - name: Validar publicacion en GitHub Pages
-        if: ${{ inputs.dry_run == 'false' }}
+        if: ${{ !inputs.dry_run }}
         run: |
           base="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64"
           # Derivar el nombre real del .pkg.tar.zst del par (VERSION lleva 'v' p. ej.
@@ -357,7 +357,7 @@ jobs:
       # dry_run: el arbol quedo materializado en ./repo SIN publicar nada.
       # Validar localmente los artefactos y firmas en vez de consultar Pages.
       - name: Validar arbol local (dry-run, nada publicado)
-        if: ${{ inputs.dry_run == 'true' }}
+        if: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE/repo/stable/x86_64"
