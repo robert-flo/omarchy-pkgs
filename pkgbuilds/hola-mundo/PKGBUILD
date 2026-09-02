@@ -10,7 +10,7 @@
 
 pkgname=hola-mundo
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc='PoC: paquete "hola mundo" personal instalable via omarchy update'
 arch=('any')
 url='https://github.com/robert-flo/omarchy-pkgs'
