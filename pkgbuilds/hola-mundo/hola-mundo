@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# PoC: mensaje de un paquete personal instalado desde [omarchy-personal].
+# Instalado por `omarchy update` vía pacman -Syu. Verificar con `hola-mundo`.
+echo "hola mundo desde el fork personal de omarchy-pkgs"

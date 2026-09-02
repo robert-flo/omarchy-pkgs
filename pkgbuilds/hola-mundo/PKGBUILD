@@ -1,0 +1,25 @@
+# Maintainer: robert-flo (personal PoC: paquete propio instalable vía omarchy update)
+#
+# PoC: un paquete "hola mundo" trivial, source=local, SIN relación lockstep con el
+# tag del fork fuente (a diferencia del par omarchy/omarchy-settings, que es pinned
+# y deriva pkgver del tag). Marcado `"personal": true` en .omarchy/package.json para
+# que la Action release-personal lo recolecte y publique a [omarchy-personal].
+#
+# Flujo: `pacman -S hola-mundo` o, mejor, `omarchy update` (que corre pacman -Syu
+# contra [omarchy-personal]) lo instala y lo mantiene actualizado.
+
+pkgname=hola-mundo
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='PoC: paquete "hola mundo" personal instalable via omarchy update'
+arch=('any')
+url='https://github.com/robert-flo/omarchy-pkgs'
+license=('MIT')
+depends=()
+makedepends=()
+source=('hola-mundo')
+sha256sums=('SKIP')
+
+package() {
+  install -Dm755 "$srcdir/hola-mundo" "$pkgdir/usr/bin/hola-mundo"
+}
