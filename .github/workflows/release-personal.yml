@@ -56,6 +56,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   release:
@@ -159,6 +160,7 @@ jobs:
           # contenedor Arch (matriz con base-devel) montando el checkout.
           docker run --rm \
             -e OMARCHY_UPSTREAM_URL="https://github.com/robert-flo/omarchy.git" \
+            -e OMARCHY_EDGE_DB_URL="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64/omarchy.db.tar.zst" \
             -e VERSION="$VERSION" \
             -e COMMIT="$COMMIT" \
             -w /pkgs \
@@ -176,7 +178,7 @@ jobs:
                 git config --global --add safe.directory /pkgs
                 git config --global user.name \"omarchy-personal[bot]\"
                 git config --global user.email \"omarchy-personal@users.noreply.github.com\"
-                cd /pkgs && OMARCHY_UPSTREAM_URL=\"\$OMARCHY_UPSTREAM_URL\" ./bin/omarchy-pkgs release \"\$VERSION\" --commit \"\$COMMIT\" --no-push --yes
+                cd /pkgs && OMARCHY_UPSTREAM_URL=\"\$OMARCHY_UPSTREAM_URL\" OMARCHY_EDGE_DB_URL=\"\$OMARCHY_EDGE_DB_URL\" ./bin/omarchy-pkgs release \"\$VERSION\" --commit \"\$COMMIT\" --no-push --yes
               "
             '
           # El contenedor corre como root: devolver la propiedad al runner.
@@ -353,6 +355,22 @@ jobs:
           fi
           echo "OK: artefactos servidos en $base"
           curl -fsSI "$base/$want" | grep -iE 'HTTP|content-type'
+
+      - name: Cierra issue de cadencia si existia
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          OPEN="$(gh issue list -R "$REPO" --state open --limit 50 --json number,title \
+            --jq '.[] | select(.title | startswith("[Cadencia]")) | [.number,.title] | @tsv' 2>/dev/null || true)"
+          if [[ -n "$OPEN" ]]; then
+            while IFS=$'\t' read -r num title; do
+              gh issue close -R "$REPO" "$num" -c "Resuelto: publicado $VERSION en omarchy-personal-repo con sombreado pkgrel $PKGREL. Cierre automatico tras release exitoso."
+              echo "Cerrado issue #$num (publicado $VERSION)."
+            done <<< "$OPEN"
+          fi
 
       # dry_run: el arbol quedo materializado en ./repo SIN publicar nada.
       # Validar localmente los artefactos y firmas en vez de consultar Pages.
