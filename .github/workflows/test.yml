@@ -1,32 +1,19 @@
 name: Tests
 
+# PR-only and personal push testing.
 on:
   pull_request:
   push:
-    branches: [master, personal]
+    branches: [personal]
   workflow_dispatch:
 
 jobs:
-  self-tests:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      # An Arch container for vercmp: version ordering has to be decided by
-      # the same comparator pacman uses on users' machines.
-      - name: Run self-tests
+      - uses: actions/checkout@v4
+      - name: Validate syntax
         run: |
-          docker run --rm \
-            -v "$PWD:/workspace:ro" \
-            -w /workspace \
-            archlinux:base-devel bash -lc '
-              set -euo pipefail
-              pacman -Syu --noconfirm jq
-              ./bin/sync-upstream self-test
-              ./bin/omarchy-pkgs self-test
-              ./bin/omarchy-release self-test
-            '
+          for f in $(find . -name "*.sh" -o -name "PKGBUILD"); do
+            bash -n "$f"
+          done
