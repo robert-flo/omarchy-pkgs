@@ -82,6 +82,25 @@ This repository powers the packaging infrastructure that builds, signs, and publ
 3. **Workflow Variable Bind Fix:**
    - Injected `VERSION: ${{ inputs.version }}` into the environment of the automated issue closure step in `release-personal.yml` to prevent unbound variable aborts on `set -u`.
 
+### Automated Upstream Fast-Forward & Personal Rebase Engine
+
+- **Resolved Issues:**
+  - [#5: [CI/CD] Automatizar sincronización de quattro y rebase de personal con gestión de issues](https://github.com/robert-flo/omarchy-pkgs/issues/5)
+- **Files Modified:**
+  - `.github/workflows/release-personal.yml`
+
+#### What was changed:
+1. **Source Repository Push Authorization:**
+   - Configured `SSH_OMARCHY_SOURCE_KEY` in `robert-flo/omarchy-pkgs` paired with an authorized write deploy key on `robert-flo/omarchy`.
+2. **Autonomous Fast-Forward & Rebase Pipeline:**
+   - Prior to building packages, the pipeline fetches `omacom/omarchy:quattro` and tags.
+   - Fast-forwards `quattro` locally and pushes to `origin/quattro`.
+   - Executes `git rebase quattro` on `personal`. If clean, pushes `--force-with-lease origin personal`.
+3. **Fail-Safe Conflict Shield & Alert Ticketing:**
+   - If a code collision occurs during rebase, the pipeline executes `git rebase --abort`.
+   - Extracts the list of conflicted files via `git diff --name-only --diff-filter=U`.
+   - Automatically opens a descriptive GitHub Issue (`[Conflicto Rebase]`) detailing the conflicted files and step-by-step resolution commands, halting package publication safely.
+
 ---
 
 ## [2026-09-29]
