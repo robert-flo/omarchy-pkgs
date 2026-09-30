@@ -33,6 +33,25 @@ This repository powers the packaging infrastructure that builds, signs, and publ
 - **Prevent Unintended Branch Sprawl:** The personal fork is scoped strictly to compiling and publishing the personal package pair (`omarchy`, `omarchy-settings`) and explicitly marked personal packages (`"personal": true`). It does not maintain an independent Arch/AUR distribution mirror.
 - **Fail-Safe Cadence Tracking:** The workflow `sync-check.yml` is the architectural early-warning sensor (§5.3) designed to prevent machines from resolving official upstream packages over personal ones during `omarchy update`. Activating issues and eliminating failing upstream crons ensures the sensor functions reliably.
 
+### Automated 4:00 AM Cadence Pipeline & Personal DB Verification Fix
+
+- **Resolved Issues:**
+  - [#4: [CI/CD] Configurar automatización diaria a las 4:00 AM y soporte para OMARCHY_EDGE_DB_URL](https://github.com/robert-flo/omarchy-pkgs/issues/4)
+- **Files Modified:**
+  - `.github/workflows/release-personal.yml`
+  - `.github/workflows/sync-check.yml`
+
+#### What was changed:
+1. **Edge DB Verification Fix (`release-personal.yml`):**
+   - Configured `OMARCHY_EDGE_DB_URL="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64/omarchy.db.tar.zst"` in the container environment.
+   - Prevents `bin/omarchy-pkgs release` from validating against the upstream official edge database (`pkgs.omarchy.org/edge`) which rejected building versions equal to or higher than published upstream releases, enforcing validation strictly against the personal repository's published floor.
+2. **Automated Cadence Resolution & Alerts (`release-personal.yml`):**
+   - Added `issues: write` permission and an automatic issue closure step. Upon successful package publication to GitHub Pages, any open `[Cadencia]` issues are resolved and closed automatically with release metadata.
+3. **Daily 4:00 AM Scheduled Automation (`sync-check.yml`):**
+   - Rescheduled daily cadence check from 06:30 UTC to 04:00 AM local time (America/El_Salvador, UTC-6 -> `0 10 * * *`).
+   - Granted `actions: write` permission to allow unattended workflow dispatch.
+   - When a new upstream release tag is detected (`BEHIND=true`), the workflow creates an alert issue and automatically triggers `release-personal.yml` with the target version, ensuring personal machines receive new packages with version shadowing (`pkgrel=99`) before morning updates.
+
 ---
 
 ## [2026-09-29]
