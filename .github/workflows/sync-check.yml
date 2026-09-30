@@ -14,13 +14,14 @@ name: Sync check (cadencia personal vs upstream)
 
 on:
   schedule:
-    # diario 06:30 UTC
-    - cron: "30 6 * * *"
+    # diario 04:00 AM local (America/El_Salvador, UTC-6 -> 10:00 UTC)
+    - cron: "0 10 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
   issues: write
+  actions: write
 
 jobs:
   sync:
@@ -84,22 +85,16 @@ jobs:
           if [[ "$BEHIND" == "true" ]]; then
             if [[ -z "$OPEN" ]]; then
               BODY_LINES=(
-                "Aviso automatizado (workflow \`sync-check.yml\`, revision L8)."
+                "Aviso automatizado (workflow \`sync-check.yml\`, revision L8/Opción 1)."
                 ""
                 "OMACOM/omarchy publico el tag \`${UP_TAG}\`, pero la rama personal"
-                "de omarchy-pkgs mantiene el pin en \`${PIN}\` (§5.3). Mientras no se"
-                "republique el par personal, las maquinas en sombreado podrian"
-                "resolver el paquete OFICIAL por encima de vercmp y perder"
-                "silenciosamente la personalizacion."
+                "de omarchy-pkgs mantiene el pin en \`${PIN}\` (§5.3)."
                 ""
-                "Como arreglarlo (RUNBOOK, modo \"Cadencia pendiente\"):"
-                "  1. Revisa / rebasa tu rama personal sobre quattro y publica el pin nuevo:"
-                "     gh workflow run release-personal.yml -R robert-flo/omarchy-pkgs \\"
-                "        --ref personal -f version=v${UP_TAG#v}"
-                "  2. El workflow deriva el pkgrel (§5.3) y publica en gh-pages."
-                "  3. Actualiza las maquinas (READANCE update / docs/05-mantener)."
+                "Se dispara automáticamente el workflow \`release-personal.yml\` para"
+                "construir y publicar el nuevo par personal con sombreado de versión (§5.3)."
                 ""
-                "Este issue se cierra solo cuando el pin vuelve a estar en cadencia."
+                "Si la publicación automática tiene éxito, este issue se cerrará solo."
+                "Si falla, permanecerá abierto para alertar y requerir revisión manual."
               )
               printf -v BODY '%s\n' "${BODY_LINES[@]}"
               gh issue create -R "$REPO" --title "$TITLE" --body "$BODY"
@@ -107,6 +102,8 @@ jobs:
             else
               echo "Ya existe issue abierto [Cadencia]; sin duplicar."
             fi
+            echo "Gatillando release automatico para $UP_TAG en omarchy-pkgs..."
+            gh workflow run release-personal.yml -R "$REPO" --ref personal -f version="$UP_TAG"
           else
             if [[ -n "$OPEN" ]]; then
               while IFS=$'\t' read -r num title; do
