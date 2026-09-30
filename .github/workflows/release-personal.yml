@@ -33,9 +33,10 @@ name: Release personal
 #     destino (gh-pages / personal).
 #
 # Secrets necesarios (repo omarchy-pkgs, donde vive este workflow):
-#   GPG_PRIVATE_KEY   clave GPG dedicada (exportacion PGP privada)
-#   GPG_PASSPHRASE    passphrase (clave dedicada sin passthru: valor dummy)
-#   SSH_DEPLOY_KEY    deploy key con acceso write a omarchy-personal-repo
+#   GPG_PRIVATE_KEY         clave GPG dedicada (exportacion PGP privada)
+#   GPG_PASSPHRASE          passphrase (clave dedicada sin passthru: valor dummy)
+#   SSH_DEPLOY_KEY          deploy key con acceso write a omarchy-personal-repo
+#   SSH_OMARCHY_SOURCE_KEY  deploy key con acceso write a robert-flo/omarchy (sync/rebase)
 
 on:
   workflow_dispatch:
@@ -84,7 +85,8 @@ jobs:
           repository: robert-flo/omarchy
           ref: personal
           path: source
-          persist-credentials: false
+          fetch-depth: 0
+          ssh-key: ${{ secrets.SSH_OMARCHY_SOURCE_KEY }}
 
       - name: Checkout pkgs (fork omarchy-pkgs, rama personal)
         uses: actions/checkout@v4
@@ -105,6 +107,53 @@ jobs:
         run: |
           git config --global user.name "omarchy-personal[bot]"
           git config --global user.email "omarchy-personal@users.noreply.github.com"
+
+      - name: Sincroniza quattro y rebase de personal sobre upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/source"
+
+          echo "==> Configurando remote upstream (omacom/omarchy)..."
+          git remote add upstream https://github.com/omacom/omarchy.git 2>/dev/null || true
+          git fetch upstream quattro --tags
+
+          echo "==> Sincronizando rama quattro con upstream..."
+          git checkout -B quattro upstream/quattro
+          if [[ "$DRY_RUN" != "true" ]]; then
+            git push origin quattro
+          else
+            echo "dry-run: push a origin/quattro omitido."
+          fi
+
+          echo "==> Ejecutando rebase de personal sobre quattro..."
+          git checkout personal
+          if git rebase quattro; then
+            echo "✓ Rebase completado limpiamente sin conflictos."
+            if [[ "$DRY_RUN" != "true" ]]; then
+              git push --force-with-lease origin personal
+            else
+              echo "dry-run: push a origin/personal omitido."
+            fi
+          else
+            echo "✗ CONFLICTO DETECTADO durante el rebase de personal sobre quattro."
+            CONFLICT_FILES="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
+            git rebase --abort
+
+            if [[ "$DRY_RUN" != "true" ]]; then
+              REPO="${{ github.repository }}"
+              TITLE="[Conflicto Rebase] Omarchy $VERSION requiere resolución manual en personal"
+              BODY="Se detectó un conflicto de código al intentar rebasear la rama \`personal\` sobre \`quattro\` para la versión **$VERSION**.\n\n### Archivos en conflicto:\n\`\`\`\n$CONFLICT_FILES\n\`\`\`\n\n### Cómo resolverlo manualmente:\n\`\`\`bash\ncd robert-flo_omarchy-personal\ngit fetch upstream\ngit checkout personal\ngit rebase upstream/quattro\n# Resuelve los conflictos en los archivos listados arriba\ngit add <archivos-resueltos>\ngit rebase --continue\ngit push --force-with-lease origin personal\n\`\`\`\n\n*El pipeline se detuvo de forma segura. No se publicaron paquetes rotos en el repositorio.*"
+
+              gh issue create -R "$REPO" --title "$TITLE" --body "$BODY" || true
+            else
+              echo "dry-run: creación de issue de conflicto omitida."
+            fi
+            exit 1
+          fi
 
       # FORK: el pkgrel del par (§5.3) se deriva del estado commitado en personal
       # (el paso "Commit del pin" deja el pkgrel aplicado). Se captura ANTES de
