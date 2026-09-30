@@ -15,9 +15,8 @@ name: Track upstream branches
 # on this repository, and its owner must be trusted by the build workflow.
 
 on:
-  schedule:
-    # Every 2 hours, off the hour to dodge the scheduling backlog at :00
-    - cron: '35 */2 * * *'
+  # FORK (robert-flo): no schedule — inert. The personal repo only publishes
+  # the omarchy + omarchy-settings pair; branch tracking is not used.
   workflow_dispatch:
     inputs:
       packages:
