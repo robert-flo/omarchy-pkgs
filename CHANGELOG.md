@@ -52,6 +52,36 @@ This repository powers the packaging infrastructure that builds, signs, and publ
    - Granted `actions: write` permission to allow unattended workflow dispatch.
    - When a new upstream release tag is detected (`BEHIND=true`), the workflow creates an alert issue and automatically triggers `release-personal.yml` with the target version, ensuring personal machines receive new packages with version shadowing (`pkgrel=99`) before morning updates.
 
+### `8678506` & Live Release — Omarchy v4.0.4-99 Live Publication & GPG Key Infrastructure
+
+- **Commit Hashes:**
+  - `personal`: [`867850688a90eb2e68c7ff6a10e83381f8daf9f5`](https://github.com/robert-flo/omarchy-pkgs/commit/867850688a90eb2e68c7ff6a10e83381f8daf9f5) (Pin v4.0.4-99)
+  - `omarchy-personal-repo` (`gh-pages`): [`68bbb3833d0c9b470c8ddf02865e812e3e8e4602`](https://github.com/robert-flo/omarchy-personal-repo/commit/68bbb3833d0c9b470c8ddf02865e812e3e8e4602)
+- **Resolved Issues:**
+  - [#3: [Cadencia] Omarchy v4.0.4 publicado; pin personal en 4.0.2](https://github.com/robert-flo/omarchy-pkgs/issues/3)
+- **Published Artifacts (HTTP 200 Live on GitHub Pages):**
+  - `omarchy-4.0.4-99-any.pkg.tar.zst` + `.sig`
+  - `omarchy-settings-4.0.4-99-any.pkg.tar.zst` + `.sig`
+  - `omarchy-personal.db` + `.sig`
+  - `omarchy.db` + `.sig`
+
+#### What was changed:
+1. **Cryptographic Signing & Deploy Key Infrastructure:**
+   - Generated a dedicated 4096-bit RSA signing key (`CD92AB07B1D24DC9A74EB60E76AFFCC217DB9FC4`, ID `76AFFCC217DB9FC4`) for `Omarchy Personal Repo <omarchy-personal@robert-flo.github.io>` following ADR-006.
+   - Configured repository secrets `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` in `robert-flo/omarchy-pkgs`.
+   - Created a dedicated ed25519 deploy key with write access on `robert-flo/omarchy-personal-repo` and configured secret `SSH_DEPLOY_KEY` in `robert-flo/omarchy-pkgs`.
+   - Exported the public signing key to `keys/omarchy-personal-repo.pub.asc`.
+2. **Release Execution & Package Pinning:**
+   - Dispatched `release-personal.yml` for version `v4.0.4`.
+   - Lockstep pinned `omarchy` and `omarchy-settings` to version `4.0.4` with shaded `pkgrel=99`.
+   - Built both packages inside the Arch Linux container against the official stable dependencies.
+   - Cryptographically signed packages and repository databases.
+   - Deployed release artifacts to `gh-pages` branch on `robert-flo/omarchy-personal-repo`.
+   - Verified live CDN delivery (HTTP 200) on `https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64/`.
+   - Closed cadence alert Issue #3.
+3. **Workflow Variable Bind Fix:**
+   - Injected `VERSION: ${{ inputs.version }}` into the environment of the automated issue closure step in `release-personal.yml` to prevent unbound variable aborts on `set -u`.
+
 ---
 
 ## [2026-09-29]
