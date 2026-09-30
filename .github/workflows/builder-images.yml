@@ -1,8 +1,7 @@
 name: Refresh builder images
 
 on:
-  schedule:
-    - cron: '23 4 * * *'
+  # FORK (robert-flo): no schedule — inert. Image refreshes are not run on schedule.
   push:
     branches: [master]
     paths:
