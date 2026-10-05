@@ -66,11 +66,12 @@ jobs:
             echo "BEHIND version: pin $pin < upstream $latest"
             echo "BEHIND=true" >> "$GITHUB_ENV"
           fi
-          # Informacio extra: si el pin esta al dia respecto al HEAD de quattro.
+          # Extra: pin vs HEAD of omacom's real branch quattro (local mirror
+          # in robert-flo/omarchy is named `upstream`; this ls-remote is omacom).
           if [[ -n "$PIN_COMMIT" && "$PIN_COMMIT" == "$UP_HEAD" ]]; then
-            echo "Nota: pin commit == HEAD quattro"
+            echo "Nota: pin commit == HEAD omacom/quattro"
           else
-            echo "Nota: pin commit ($PIN_COMMIT) != HEAD quattro ($UP_HEAD) [dependencia a evaluar]"
+            echo "Nota: pin commit ($PIN_COMMIT) != HEAD omacom/quattro ($UP_HEAD) [dependencia a evaluar]"
           fi
 
       - name: Gestiona issue de aviso de cadencia
