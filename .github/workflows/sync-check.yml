@@ -41,10 +41,13 @@ jobs:
           cd "$GITHUB_WORKSPACE/pkgs"
           PIN="$(awk -F= '/^pkgver=/{v=$2} END{print v}' pkgbuilds/omarchy/PKGBUILD)"
           PIN_COMMIT="$(awk -F= '/^_commit=/{c=$2} END{print c}' pkgbuilds/omarchy/PKGBUILD)"
+          # Solo releases estables (vX.Y.Z): el fork sigue la linea estable de
+          # omarchy, no prereleases (rc/beta), para no tener que rebasear a cada rato.
           UP_TAG="$(git ls-remote --tags https://github.com/omacom/omarchy.git \
             | awk '{print $2}' \
             | grep -E '^refs/tags/v[0-9]' \
             | sed -E 's#^refs/tags/##; s/\^\{\}$//' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
             | sort -Vu \
             | tail -n1)"
           UP_HEAD="$(git ls-remote https://github.com/omacom/omarchy.git refs/heads/quattro | awk '{print $1}')"
