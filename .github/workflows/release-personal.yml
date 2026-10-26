@@ -353,6 +353,44 @@ jobs:
             gpg --batch --yes --detach-sign --armor --output stable/x86_64/$base.db.sig stable/x86_64/$base.db
             gpg --batch --yes --detach-sign --armor --output stable/x86_64/$base.files.sig stable/x86_64/$base.files
           done
+          # Paquetes grandes: git en GitHub rechaza archivos de mas de 100MB y
+          # omarchy 4.0.6+ ya los pasa (el oficial de omacom pesa ~120MB, el
+          # build personal puede pesar mas). Los paquetes que pasan el limite
+          # se publican como assets del release 'pkg-stable' (tag fijo de
+          # omarchy-personal-repo; los assets se reemplazan en cada release) y
+          # el [omarchy-personal] del pacman.conf del fork agrega ese URL como
+          # segundo Server: pacman prueba los Servers en orden, asi el db de
+          # Pages sigue sirviendo y el .pkg.tar.zst grande baja del release.
+          BIG="$(find stable/x86_64 -maxdepth 1 -name '*.pkg.tar.zst' -size +90M -printf '%f\n' | sort || true)"
+          ARTIFACTS="$(ls -1 stable/x86_64/*.pkg.tar.zst 2>/dev/null | xargs -n1 basename | tr '\n' ' ')"
+          echo "ARTIFACTS=${ARTIFACTS% }" >> "$GITHUB_ENV"
+          echo "BIG_PKGS=${BIG//$'\n'/ }" >> "$GITHUB_ENV"
+          if [[ -n "$BIG" ]]; then
+            if [[ -z "${PERSONAL_REPO_PAT:-}" ]]; then
+              echo "FORK FAIL: hay paquetes sobre 100MB ($BIG) y falta el secret PERSONAL_REPO_PAT"
+              echo "(PAT con scope repo sobre robert-flo/omarchy-personal-repo) para subirlos al release pkg-stable."
+              exit 1
+            fi
+            export GH_TOKEN="$PERSONAL_REPO_PAT"
+            R=robert-flo/omarchy-personal-repo
+            echo "Paquetes fuera del limite de git (van al release pkg-stable): $BIG"
+            gh release view pkg-stable -R "$R" >/dev/null 2>&1 || \
+              gh release create pkg-stable -R "$R" --title "Paquetes grandes del repo personal" \
+                --notes "Assets de los paquetes que pasan el limite de 100MB de git en gh-pages. El tag pkg-stable es fijo: [omarchy-personal] los resuelve como segundo Server (https://github.com/robert-flo/omarchy-personal-repo/releases/download/pkg-stable) y los assets se reemplazan en cada release."
+            for f in $BIG; do
+              gh release upload pkg-stable -R "$R" --clobber "stable/x86_64/$f" "stable/x86_64/$f.sig"
+            done
+          fi
+          # Limpia assets de versiones anteriores que el db ya no referencia.
+          if gh release view pkg-stable -R "$R" >/dev/null 2>&1; then
+            gh release view pkg-stable -R "$R" --json assets -q '.assets[].name' | while read -r a; do
+              [[ -z "$a" ]] && continue
+              keep=0
+              for f in ${BIG:-}; do [[ "$a" == "$f" || "$a" == "$f.sig" ]] && keep=1; done
+              if [[ "$keep" -eq 0 ]]; then gh release delete-asset pkg-stable "$a" -R "$R" -y || true; fi
+            done
+          fi
+          for f in $BIG; do rm -f "stable/x86_64/$f" "stable/x86_64/$f.sig"; done
           ls -1 stable/x86_64/
           git add -A
           if git diff --cached --quiet; then
@@ -364,28 +402,41 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          PERSONAL_REPO_PAT: ${{ secrets.PERSONAL_REPO_PAT }}
 
       - name: Validar publicacion en GitHub Pages
         if: ${{ !inputs.dry_run }}
         run: |
           base="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64"
+          # Los paquetes grandes se sirven del release pkg-stable, no de Pages.
+          bigbase="https://github.com/robert-flo/omarchy-personal-repo/releases/download/pkg-stable"
+          bigurl() {
+            case " ${BIG_PKGS:-} " in *" $1 "*) printf '%s' "$bigbase/$1" ;; *) printf '%s' "$base/$1" ;; esac
+          }
           # Derivar el nombre real del .pkg.tar.zst del par (VERSION lleva 'v' p. ej.
           # v4.0.2; el archivo no) y del paquete personal generico p. ej. hola-mundo.
-          want="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/omarchy-*.pkg.tar.zst 2>/dev/null | head -1)")"
-          echo "Par a validar: $want"
-          wants="$want"
-          for extra in $PERSONAL_PKGS; do
-            case " $wants " in *" $extra-"*) ;; *)
-              f="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/$extra-*.pkg.tar.zst 2>/dev/null | head -1)")"
-              [[ -n "$f" ]] && wants="$wants $f"
-            esac
-          done
+          # La lista completa la deja el paso de publicar en ARTIFACTS (los
+          # paquetes grandes se retiran del arbol de gh-pages, asi que aqui ya
+          # no aparecen con ls). Fallback al derivado viejo si no esta.
+          if [[ -n "${ARTIFACTS:-}" ]]; then
+            wants="$ARTIFACTS"
+          else
+            want="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/omarchy-*.pkg.tar.zst 2>/dev/null | head -1)")"
+            echo "Par a validar: $want"
+            wants="$want"
+            for extra in $PERSONAL_PKGS; do
+              case " $wants " in *" $extra-"*) ;; *)
+                f="$(basename "$(ls "$GITHUB_WORKSPACE/repo"/stable/x86_64/$extra-*.pkg.tar.zst 2>/dev/null | head -1)")"
+                [[ -n "$f" ]] && wants="$wants $f"
+              esac
+            done
+          fi
           echo "Artefactos a validar: $wants"
           ok=0
           for i in $(seq 1 60); do
             all=1
             for w in $wants; do
-              curl -fsSI "$base/$w" >/dev/null 2>&1 || { all=0; break; }
+              curl -fsSIL "$(bigurl "$w")" >/dev/null 2>&1 || { all=0; break; }
             done
             if [[ "$all" -eq 1 ]] \
               && curl -fsSI "$base/omarchy.db" >/dev/null 2>&1 \
@@ -402,8 +453,10 @@ jobs:
             echo "FORK FAIL: la publicacion no aparece aun en GitHub Pages."
             exit 1
           fi
-          echo "OK: artefactos servidos en $base"
-          curl -fsSI "$base/$want" | grep -iE 'HTTP|content-type'
+          echo "OK: artefactos servidos (Pages y/o release pkg-stable)"
+          for w in $wants; do
+            curl -fsSIL "$(bigurl "$w")" | grep -iE 'HTTP|content-type' | head -1
+          done
 
       - name: Cierra issue de cadencia si existia
         if: ${{ !inputs.dry_run }}
