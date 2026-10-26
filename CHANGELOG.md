@@ -134,3 +134,4 @@ This repository powers the packaging infrastructure that builds, signs, and publ
 - Conflictos resueltos a favor del fork: los 2 PKGBUILD pineados (`omarchy` 4.0.6 pkgrel 100 y `omarchy-settings`, source `robert-flo/omarchy`), los workflows inert del fork (builder-images, sync-rebuilds, sync-upstream, test, track-branches) y los `.omarchy/package.json` del fork.
 - `auto-merge-pr.yml` de upstream y su script quedan fuera del fork: aca los PRs los mergea el humano.
 - Workflow nuevo `sync-branches.yml` (copia identica en master): `upstream` = espejo de omacom master; merge diario a `personal` a las 03:30 SV; conflicto abre PR upstream -> personal y el run falla.
+- `build-pr.yml`: si un PR planea mas de 64 builds (un catch-up toca cientos de paquetes y la matriz de GitHub se topa con 256 jobs), el PR salta los builds de PR; los pineados los construye el release workflow.

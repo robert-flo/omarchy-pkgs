@@ -163,6 +163,16 @@ jobs:
           esac
           echo "trusted=$trusted" >> "$GITHUB_OUTPUT"
           if [[ $trusted == true ]]; then
+            # A catch-up PR (an overdue upstream merge) touches hundreds of
+            # packages at once. GitHub caps a matrix at 256 jobs, so planning
+            # them all fails the build job outright and leaves `result` red.
+            # Above the cap, skip builds for this PR: the pinned packages are
+            # built by the release workflow from `personal`, not by PR builds.
+            if (( ${PLANNED:-0} > 64 )); then
+              echo "count=0" >> "$GITHUB_OUTPUT"
+              echo "::notice::Catch-up PR: $PLANNED packages planned, above the 64-job cap (GitHub matrices hold 256). Skipping PR builds; the release workflow builds the pinned packages."
+              exit 0
+            fi
             echo "count=$PLANNED" >> "$GITHUB_OUTPUT"
             echo "Author $AUTHOR is trusted ($STATUS); building $PLANNED package(s)."
           else
