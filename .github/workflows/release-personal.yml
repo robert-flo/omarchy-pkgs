@@ -4,6 +4,7 @@ name: Release personal
 # para robert-flo (W7). Flujo: recolectar paquetes 'personal':true -> pin (solo el
 # par lockstep) -> build -> sign -> promote -> update -> clean -> publicar a
 # gh-pages del repo omarchy-personal-repo.
+# (build: bin/build; sign+db: bin/publish-artifact. bin/repo ya no existe upstream.)
 # Build directo a stable contra el ecosistema estable oficial: requiere
 # un-pin temporal de los pinned (no buildan nativo a stable por diseño).
 #
@@ -209,7 +210,7 @@ jobs:
           echo "Pinning ${VERSION} @ ${COMMIT}"
           # El engine usa vercmp (pacman) y makepkg -g: corre dentro de un
           # contenedor Arch (matriz con base-devel) montando el checkout.
-          docker run --rm \
+          docker run --rm --user root \
             -e OMARCHY_UPSTREAM_URL="https://github.com/robert-flo/omarchy.git" \
             -e OMARCHY_EDGE_DB_URL="https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64/omarchy.db.tar.zst" \
             -e VERSION="$VERSION" \
@@ -304,31 +305,47 @@ jobs:
       # un-pin solo aplica al subconjunto pinned (el par lockstep).
       - name: Build (stable/x86_64, paquetes personales)
         run: |
+          set -euo pipefail
           cd "$GITHUB_WORKSPACE/pkgs"
-          export OMARCHY_REPO_ROOT="$GITHUB_WORKSPACE/repo"
-          rm -rf "$OMARCHY_REPO_ROOT/stable"
           for p in $PINNED_PERSONAL_PKGS; do
             jq '.pinned = false' "pkgbuilds/$p/.omarchy/package.json" > "pkgbuilds/$p/.omarchy/package.json.tmp" &&
               mv "pkgbuilds/$p/.omarchy/package.json.tmp" "pkgbuilds/$p/.omarchy/package.json"
           done
           jq -r '.pinned' pkgbuilds/omarchy/.omarchy/package.json
-          ./bin/repo --local build --mirror stable --arch x86_64 --package $PERSONAL_PKGS
+          # FORK: upstream 9188fb91 ("Remove the repository host's tooling")
+          # borro bin/repo y sus subcomandos (sign, promote-build, update-repo,
+          # clean-repo). Lo que queda upstream es bin/build (deja los paquetes
+          # sin firmar en build-output/<mirror>/<arch>) + bin/publish-artifact
+          # (firma, repo-add y sube al canal). Aca: bin/build directo.
+          bin/build --mirror stable --arch x86_64 --package $PERSONAL_PKGS
+          ls -1 build-output/stable/x86_64/
 
-      - name: Sign
+      # FORK: reemplaza sign + promote + update + clean de bin/repo por el
+      # bin/publish-artifact de upstream, con un "remote" rclone LOCAL: el
+      # checkout de gh-pages montado en /repo. El arbol stable/ se rehace de cero
+      # en cada release (misma semantica que el clean previo: solo se sirve lo
+      # que esta release construyo), asi publish-artifact crea un db nuevo,
+      # firma cada paquete (GPG_PRIVATE_KEY/GPG_PASSPHRASE, firma binaria .sig
+      # como pacman espera) y deja omarchy.db.tar.zst/omarchy.files.tar.zst.
+      # Corre dentro de la imagen builder (repo-add, bsdtar, vercmp, rclone).
+      - name: Firmar y regenerar db (bin/publish-artifact, remote local)
         run: |
+          set -euo pipefail
           cd "$GITHUB_WORKSPACE/pkgs"
-          ./bin/repo --local sign --mirror stable --arch x86_64
+          rm -rf "$GITHUB_WORKSPACE/repo/stable"
+          mkdir -p "$GITHUB_WORKSPACE/repo/stable/x86_64"
+          files=$(ls build-output/stable/x86_64/*.pkg.tar.zst)
+          [[ -n "$files" ]] || { echo "FORK FAIL: bin/build no dejo paquetes"; exit 1; }
+          docker run --rm --user root \
+            -e GPG_PRIVATE_KEY -e GPG_PASSPHRASE \
+            -v "$PWD:/w:ro" -v "$GITHUB_WORKSPACE/repo:/repo" -w /w \
+            omarchy-pkg-builder:latest-x86_64-stable \
+            bin/publish-artifact --remote /repo --mirror stable --arch x86_64 $files
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/repo"
+          ls -la "$GITHUB_WORKSPACE/repo/stable/x86_64/"
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Promover, regenerar db y limpiar
-        run: |
-          cd "$GITHUB_WORKSPACE/pkgs"
-          export OMARCHY_REPO_ROOT="$GITHUB_WORKSPACE/repo"
-          ./bin/repo --local promote --mirror stable --arch x86_64
-          ./bin/repo --local update --mirror stable --arch x86_64
-          ./bin/repo --local clean --mirror stable --arch x86_64
 
       - name: Publicar a gh-pages (db como copias + firmas)
         if: ${{ !inputs.dry_run }}

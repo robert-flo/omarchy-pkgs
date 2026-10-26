@@ -1,0 +1,22 @@
+name: Workflow tools guard
+
+# FORK (robert-flo): falla fuerte en el PR si algun workflow invoca un script
+# del repo que no existe (p. ej. un merge de upstream que borra bin/repo).
+# Ver .github/scripts/check-workflow-tools.sh.
+
+on:
+  pull_request:
+  push:
+    branches: [personal]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Herramientas referenciadas por los workflows existen
+        run: .github/scripts/check-workflow-tools.sh
