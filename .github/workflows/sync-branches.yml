@@ -1,0 +1,80 @@
+name: Sync upstream y personal
+
+# FORK (robert-flo): espejo diario de omacom/omarchy-pkgs (sustituye el sync
+# de las 2 a.m. cancelado el 2026-09-30, ahora con el modelo de ramas del
+# fork: `upstream` espejo y `personal` de trabajo).
+#
+# Que hace cada madrugada (03:30 America/El_Salvador = 09:30 UTC):
+#   1. La rama `upstream` queda espejo exacto del master de omacom (avanza con
+#      ff; force solo si upstream reescribio su historia). Solo se toca esta
+#      rama espejo; master sigue siendo la rama de registro de workflows.
+#   2. `personal` recibe un merge de `upstream` para no volver a acumular un
+#      desfase de cientos de commits. Nunca rebase ni force-push: la regla del
+#      fork es que `personal` no se reescribe. Merge limpio -> push directo de
+#      un merge commit de github-actions[bot]. Conflicto -> abort, PR
+#      upstream -> personal para resolucion humana y el run queda rojo (la
+#      unica notificacion es el fallo).
+#
+# El pin de pkgver/pkgrel en personal sigue mandando: si upstream mueve la
+# version, el conflicto abre PR y la resolucion es conservar el pin hasta
+# decidir migrar a la estable nueva.
+
+on:
+  schedule:
+    - cron: '30 9 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync-branches
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout completo del fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Espejo de la rama upstream
+        run: |
+          git remote add omacom https://github.com/omacom/omarchy-pkgs.git
+          git fetch omacom master
+          if git merge-base --is-ancestor refs/remotes/origin/upstream refs/remotes/omacom/master 2>/dev/null; then
+            git push origin refs/remotes/omacom/master:refs/heads/upstream
+          else
+            git push --force origin refs/remotes/omacom/master:refs/heads/upstream
+          fi
+
+      - name: Merge de upstream a personal
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B personal refs/remotes/origin/personal
+          if git merge --ff-only refs/remotes/omacom/master 2>/dev/null; then
+            git push origin personal
+            exit 0
+          fi
+          if git merge --no-ff --no-edit refs/remotes/omacom/master; then
+            git push origin personal
+            exit 0
+          fi
+          git merge --abort
+          BODY='Merge diario upstream->personal con conflicto. Resolver a mano conservando el pin de pkgver/pkgrel del fork.'
+          PR=$(gh pr list --repo "$GITHUB_REPOSITORY" --head upstream --base personal --state open --json number --jq '.[0].number')
+          if [ -n "$PR" ]; then
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$BODY"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --head upstream --base personal \
+              --title 'upstream: conflicto del merge diario con personal' --body "$BODY"
+          fi
+          echo "::error::El merge upstream->personal tiene conflictos: resuelvelos en el PR abierto."
+          exit 1

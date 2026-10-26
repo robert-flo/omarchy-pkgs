@@ -125,3 +125,13 @@ This repository powers the packaging infrastructure that builds, signs, and publ
   - [`robert-flo/omarchy-pkgs`](https://github.com/robert-flo/omarchy-pkgs) (PKGBUILD recipes and build pipelines),
   - [`robert-flo/omarchy-personal-repo`](https://github.com/robert-flo/omarchy-personal-repo) (pacman binary distribution).
 - **Build Readiness:** Keeping `omarchy-pkgs` up to date ensures all build scripts and GitHub Actions runners (`build-pr.yml`, `publish.yml`) operate against the latest upstream Arch dependencies while producing packages compatible with the `[omarchy-personal]` repository.
+
+## [2026-10-25]
+
+### Catch-up de upstream master + sync diario CI
+
+- `personal` absorbe los 1,159 commits de `omacom/omarchy-pkgs` master acumulados desde el 30-sept, como merge commit (eeaf15b), sin rebase ni force-push.
+- Conflictos resueltos a favor del fork: los 2 PKGBUILD pineados (`omarchy` 4.0.6 pkgrel 100 y `omarchy-settings`, source `robert-flo/omarchy`), los workflows inert del fork (builder-images, sync-rebuilds, sync-upstream, test, track-branches) y los `.omarchy/package.json` del fork.
+- `auto-merge-pr.yml` de upstream y su script quedan fuera del fork: aca los PRs los mergea el humano.
+- Workflow nuevo `sync-branches.yml` (copia identica en master): `upstream` = espejo de omacom master; merge diario a `personal` a las 03:30 SV; conflicto abre PR upstream -> personal y el run falla.
+- `build-pr.yml`: si un PR planea mas de 64 builds (un catch-up toca cientos de paquetes y la matriz de GitHub se topa con 256 jobs), el PR salta los builds de PR; los pineados los construye el release workflow.
