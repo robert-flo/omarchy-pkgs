@@ -124,7 +124,7 @@ jobs:
           git remote add omacom https://github.com/omacom/omarchy.git 2>/dev/null || true
           git fetch omacom quattro --tags
 
-          echo "==> Fast-forward del mirror local `upstream` desde omacom/quattro..."
+          echo "==> Fast-forward del mirror local 'upstream' desde omacom/quattro..."
           git checkout -B upstream omacom/quattro
           if [[ "$DRY_RUN" != "true" ]]; then
             git push origin upstream
@@ -132,8 +132,15 @@ jobs:
             echo "dry-run: push a origin/upstream omitido."
           fi
 
-          echo "==> Ejecutando rebase de personal sobre el mirror `upstream`..."
           git checkout personal
+          # FORK: si personal ya contiene al mirror (p. ej. upstream se integro
+          # por merge, como 339c3254), no hay nada que rebasear. Rebasear igual
+          # re-aplica los commits del fork sobre su propia base y conflictua en
+          # falso (run 40353368022, issue #29).
+          if git merge-base --is-ancestor upstream personal; then
+            echo "OK: personal ya contiene upstream ($(git rev-parse --short upstream)); sin rebase."
+          else
+          echo "==> Ejecutando rebase de personal sobre el mirror 'upstream'..."
           if git rebase upstream; then
             echo "✓ Rebase completado limpiamente sin conflictos."
             if [[ "$DRY_RUN" != "true" ]]; then
@@ -142,7 +149,7 @@ jobs:
               echo "dry-run: push a origin/personal omitido."
             fi
           else
-            echo "✗ CONFLICTO DETECTADO durante el rebase de personal sobre el mirror `upstream`."
+            echo "✗ CONFLICTO DETECTADO durante el rebase de personal sobre el mirror 'upstream'."
             CONFLICT_FILES="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
             git rebase --abort
 
@@ -156,6 +163,7 @@ jobs:
               echo "dry-run: creación de issue de conflicto omitida."
             fi
             exit 1
+          fi
           fi
 
       # FORK: el pkgrel del par (§5.3) se deriva del estado commitado en personal
