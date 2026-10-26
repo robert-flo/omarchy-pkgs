@@ -38,3 +38,4 @@ pkgbuilds/yay/yay/
 
 # Python helpers
 __pycache__/
+!pkgbuilds/ravn-home-niri/*.tar.gz
