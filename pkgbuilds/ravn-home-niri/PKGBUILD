@@ -1,0 +1,72 @@
+# Maintainer: Roberto Flores <25asab015@ujmd.edu.sv>
+#
+# ravn-home-niri: capa niri y clavis para la estación de trabajo ravn.
+# Repositorio fuente privado; tarball vendoreado como fuente local con sha256
+# para permitir compilación transparente en la Action release-personal sin secretos.
+
+pkgname=ravn-home-niri
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Capa niri para la estación de trabajo ravn (niri, clavis, postinstall)'
+arch=('any')
+url='https://github.com/robert-flo/ravn-home-niri'
+license=('MIT')
+options=('!debug')
+depends=('ravn-home-common')
+optdepends=(
+  'niri: compositor de ventanas wayland'
+  'quickshell: shell clavis'
+  'matugen: generador de paletas dinamicas'
+)
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('445e40ed2e2474b7b5c8e235e199e1717f2e8d825d5a4e59e3daed507bb45f6e')
+
+package() {
+  local src="${srcdir}/${pkgname}-${pkgver}"
+  local dest="${pkgdir}/usr/share/ravn/niri"
+
+  install -dm755 "${dest}"
+
+  # niri configuration
+  install -dm755 "${dest}/niri/clavis"
+  install -m644 "${src}/niri/config.kdl" "${dest}/niri/config.kdl"
+  install -m644 "${src}/niri/liquidbird.kdl" "${dest}/niri/liquidbird.kdl"
+  install -m644 "${src}/niri/obsidian-violet.kdl" "${dest}/niri/obsidian-violet.kdl"
+  install -m644 "${src}/niri/statindet-animations.kdl" "${dest}/niri/statindet-animations.kdl"
+  install -m644 "${src}/niri/statindet-colors.kdl" "${dest}/niri/statindet-colors.kdl"
+  install -m644 "${src}/niri/statindet-windowrule.kdl" "${dest}/niri/statindet-windowrule.kdl"
+  install -m644 "${src}/niri/clavis/"*.kdl "${dest}/niri/clavis/"
+
+  # outputs.kdl MUST NOT be included (machine-specific)
+  rm -f "${dest}/niri/outputs.kdl"
+
+  # clavis configuration
+  install -dm755 "${dest}/clavis/matugen"
+  install -m644 "${src}/clavis/config.json" "${dest}/clavis/config.json"
+  install -m644 "${src}/clavis/matugen/config.toml" "${dest}/clavis/matugen/config.toml"
+
+  # environment.d
+  install -dm755 "${dest}/environment.d"
+  install -m644 "${src}/environment.d/clavis-mpvpaper.conf" "${dest}/environment.d/clavis-mpvpaper.conf"
+
+  # shared assets (wallpapers and matugen template)
+  install -dm755 "${dest}/share/clavis/wallpapers/statindet"
+  install -dm755 "${dest}/share/clavis/wallpapers/video"
+  install -dm755 "${dest}/share/statindet-niri"
+
+  install -m644 "${src}/share/clavis/wallpapers/statindet/wallhaven-rq6yqm.jpg" "${dest}/share/clavis/wallpapers/statindet/wallhaven-rq6yqm.jpg"
+  install -m644 "${src}/share/clavis/wallpapers/wallhaven-5y3571.jpg" "${dest}/share/clavis/wallpapers/wallhaven-5y3571.jpg"
+  install -m755 "${src}/share/clavis/wallpapers/video/optimize-wallpaper.sh" "${dest}/share/clavis/wallpapers/video/optimize-wallpaper.sh"
+  install -m644 "${src}/share/clavis/wallpapers/video/README.md" "${dest}/share/clavis/wallpapers/video/README.md"
+  install -m644 "${src}/share/statindet-niri/niri-colors.kdl" "${dest}/share/statindet-niri/niri-colors.kdl"
+
+  # bin executables
+  install -dm755 "${dest}/bin"
+  install -m755 "${src}/bin/clavis-mpvpaper.sh" "${dest}/bin/clavis-mpvpaper.sh"
+  install -m755 "${src}/bin/niri-dotfiles-postinstall" "${dest}/bin/niri-dotfiles-postinstall"
+  install -m755 "${src}/bin/ravn-niri-sync" "${dest}/bin/ravn-niri-sync"
+
+  # symlinks
+  ln -s "niri-dotfiles-postinstall" "${dest}/bin/ravn-niri-postinstall"
+  ln -s "../share/clavis/wallpapers/video/optimize-wallpaper.sh" "${dest}/bin/optimize-wallpaper"
+}
