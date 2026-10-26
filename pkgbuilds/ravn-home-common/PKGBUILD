@@ -1,0 +1,64 @@
+# Maintainer: Roberto Flores <25asab015@ujmd.edu.sv>
+#
+# ravn-home-common: capa comun de $HOME para la workstation ravn.
+# Repositorio fuente privado; tarball vendoreado como fuente local con sha256
+# para permitir compilacion transparente en la Action release-personal sin secretos.
+
+pkgname=ravn-home-common
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Capa comun de $HOME para la workstation ravn (shell, terminal, fcitx5, gtk, mpv)'
+arch=('any')
+url='https://github.com/robert-flo/ravn-home-common'
+license=('MIT')
+options=('!debug')
+depends=('bash')
+optdepends=(
+  'fish: shell interactiva'
+  'alacritty: emulador de terminal'
+  'fcitx5: soporte de metodos de entrada'
+  'gtk3: soporte de aplicaciones GTK 3'
+  'gtk4: soporte de aplicaciones GTK 4'
+  'mpv: reproductor multimedia'
+)
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('ab361c2e553a086c3df8cb3c48d0f8e022110daeeb9c379dfddec4b5a33771e1')
+
+package() {
+  local src="${srcdir}/${pkgname}-${pkgver}"
+  local dest="${pkgdir}/usr/share/ravn/common"
+
+  install -dm755 "${dest}"
+
+  # bash
+  install -dm755 "${dest}/bash"
+  install -m644 "${src}/bash/rc" "${dest}/bash/rc"
+
+  # fish
+  install -dm755 "${dest}/fish"
+  install -m644 "${src}/fish/config.fish" "${dest}/fish/config.fish"
+
+  # alacritty
+  install -dm755 "${dest}/alacritty"
+  install -m644 "${src}/alacritty/alacritty.toml" "${dest}/alacritty/alacritty.toml"
+
+  # fcitx5
+  install -dm755 "${dest}/fcitx5/conf"
+  install -m644 "${src}/fcitx5/conf/classicui.conf" "${dest}/fcitx5/conf/classicui.conf"
+
+  # gtk-3.0
+  install -dm755 "${dest}/gtk-3.0"
+  install -m644 "${src}/gtk-3.0/settings.ini" "${dest}/gtk-3.0/settings.ini"
+
+  # gtk-4.0
+  install -dm755 "${dest}/gtk-4.0"
+  cp -a "${src}/gtk-4.0/"* "${dest}/gtk-4.0/"
+
+  # mpv
+  install -dm755 "${dest}/mpv"
+  cp -a "${src}/mpv/"* "${dest}/mpv/"
+
+  # bin (ravn-home-sync)
+  install -dm755 "${dest}/bin"
+  install -m755 "${src}/bin/ravn-home-sync" "${dest}/bin/ravn-home-sync"
+}
