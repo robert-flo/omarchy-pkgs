@@ -41,3 +41,5 @@ pkgbuilds/yay/yay/
 __pycache__/
 !pkgbuilds/ravn-home-niri/*.tar.gz
 !pkgbuilds/ravn-git-bare-clone/*.tar.gz
+!pkgbuilds/ravn-trio/ravn-trio-*.tar.gz
+!pkgbuilds/ravn-sessionizer/ravn-sessionizer-*.tar.gz
